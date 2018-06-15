@@ -31,14 +31,17 @@ func main() {
 
 	// Data from instance metadata
 	//nodeName := meta.InstanceName()
-	nodeName := "worker-k8s-15m1"
+	nodeName := "worker-k8s-75sg"
 	//hostName := meta.InstanceHostname()
-	hostName := "worker-k8s-15m1.c.uw-dev.internal"
+	hostName := "worker-k8s-75sg.c.uw-dev.internal"
 	//zone := meta.InstanceZone()
-	zone := "europe-west2-b"
+	zone := "europe-west2-a"
+
+	// TODO: Fix
+	region := "europe-west2"
 
 	// gcp client
-	gc, err := gclient.NewNodeClient(project, nodeName, zone)
+	gc, err := gclient.NewNodeClient(project, nodeName, region, zone)
 	if err != nil {
 		log.Fatal(err)
 	}

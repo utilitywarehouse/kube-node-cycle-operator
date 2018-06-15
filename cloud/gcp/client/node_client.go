@@ -5,6 +5,7 @@ type GCPNodeClient struct {
 	Project string
 	Node    string
 	Zone    string
+	Region  string
 }
 
 type GCPNodeClientInterface interface {
@@ -12,7 +13,7 @@ type GCPNodeClientInterface interface {
 	TerminateNode() error
 }
 
-func NewNodeClient(project, node, zone string) (*GCPNodeClient, error) {
+func NewNodeClient(project, node, region, zone string) (*GCPNodeClient, error) {
 	gc, err := NewGCPClient(project)
 	if err != nil {
 		return nil, err
@@ -23,15 +24,16 @@ func NewNodeClient(project, node, zone string) (*GCPNodeClient, error) {
 		Project: project,
 		Node:    node,
 		Zone:    zone,
+		Region:  region,
 	}
 	return gcn, nil
 
 }
 
 func (gcn *GCPNodeClient) NeedsUpdate() (bool, error) {
-	return gcn.gc.NeedsUpdate(gcn.Node, gcn.Zone)
+	return gcn.gc.NeedsUpdate(gcn.Node, gcn.Region, gcn.Zone)
 }
 
 func (gcn *GCPNodeClient) TerminateNode() error {
-	return gcn.gc.TerminateInstance(gcn.Node, gcn.Zone)
+	return gcn.gc.TerminateInstance(gcn.Node, gcn.Region, gcn.Zone)
 }

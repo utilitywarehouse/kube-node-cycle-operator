@@ -17,6 +17,7 @@ type GCPClient struct {
 }
 
 type GCPClientInterface interface {
+	GetInstanceCreator(instance, zone string) (string, error)
 	GetInstanceTemplateName(instance, zone string) (string, error)
 	IsTemplateAvailable(instanceTemplate string) (bool, error)
 	NeedsUpdate(nodeName string) (bool, error)
@@ -55,6 +56,28 @@ func NewGCPClient(project string) (*GCPClient, error) {
 	return gc, nil
 }
 
+func (gc *GCPClient) GetInstanceCreator(instance, zone string) (string, error) {
+	// Get instance object from the api
+	resp, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
+	if err != nil {
+		return "", err
+	}
+
+	meta := resp.Metadata
+
+	var instanceCreator string
+	for _, m := range meta.Items {
+		if m.Key == "created-by" {
+			instanceCreator = *m.Value
+		}
+	}
+
+	if instanceCreator == "" {
+		return "", errors.New("No instance creator found")
+	}
+	return instanceCreator, nil
+}
+
 func (gc *GCPClient) GetInstanceTemplateName(instance, zone string) (string, error) {
 	// Get instance object from the api
 	resp, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
@@ -91,24 +114,63 @@ func (gc *GCPClient) IsTemplateAvailable(instanceTemplate string) (bool, error) 
 	return true, nil
 }
 
-func (gc *GCPClient) NeedsUpdate(nodeName, zone string) (bool, error) {
+func (gc *GCPClient) NeedsUpdate(nodeName, region, zone string) (bool, error) {
 	instanceTemplate, err := gc.GetInstanceTemplateName(nodeName, zone)
 	if err != nil {
 		return false, err
 	}
 
-	available, err := gc.IsTemplateAvailable(instanceTemplate)
+	instanceCreator, err := gc.GetInstanceCreator(nodeName, zone)
 	if err != nil {
 		return false, err
 	}
 
-	return !available, nil
+	// Let's just assume that the instance was crated by a Regional Group Manager else fail
+	groupManager, err := gc.ComputeService.RegionInstanceGroupManagers.Get(gc.Project, region, formatLinkString(instanceCreator)).Context(gc.Ctx).Do()
+	if err != nil {
+		return false, err
+	}
+
+	if groupManager.InstanceTemplate == instanceTemplate {
+		return false, nil
+	} else {
+		return true, nil
+	}
+
+	//available, err := gc.IsTemplateAvailable(instanceTemplate)
+	//if err != nil {
+	//	return false, err
+	//}
+
+	//return !available, nil
 }
 
-func (gc *GCPClient) TerminateInstance(instance, zone string) error {
-	_, err := gc.ComputeService.Instances.Delete(gc.Project, zone, instance).Context(gc.Ctx).Do()
+// Terminate instance won't be enough
+// Instance needs to be recreated from instance group in order to get the new template
+// $ gcloud compute instance-groups managed recreate-instances NAME --instances=INSTANCE
+func (gc *GCPClient) TerminateInstance(instance, region, zone string) error {
+	//_, err := gc.ComputeService.Instances.Delete(gc.Project, zone, instance).Context(gc.Ctx).Do()
+	//if err != nil {
+	//	return err
+	//}
+	//return nil
+	inst, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
+	if err != nil {
+		return err
+	}
+	rb := &compute.RegionInstanceGroupManagersRecreateRequest{
+		Instances: []string{inst.SelfLink},
+	}
+
+	instanceCreator, err := gc.GetInstanceCreator(instance, zone)
+	if err != nil {
+		return err
+	}
+
+	_, err = gc.ComputeService.RegionInstanceGroupManagers.RecreateInstances(gc.Project, region, formatLinkString(instanceCreator), rb).Context(gc.Ctx).Do()
 	if err != nil {
 		return err
 	}
 	return nil
+
 }

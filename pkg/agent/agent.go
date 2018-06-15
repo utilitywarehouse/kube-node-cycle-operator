@@ -109,10 +109,14 @@ func (na *NodeAgent) Run() {
 
 		// In case of update needed
 		if needsUpdate && na.s.UpdateNeeded == annotations.AnnoTrue {
-			na.drainNode()
 
 			// Poll for permission to start
 			if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
+				//TBD: testing code that is not reachable without operator
+				na.s.UpdateInProgress = annotations.AnnoTrue
+				na.updateStatus()
+				break
+
 				// Ignore and continue to poll on the next iteration
 				continue
 			}
@@ -128,12 +132,20 @@ func (na *NodeAgent) Run() {
 	}
 	if na.s.UpdateNeeded == annotations.AnnoTrue && na.s.UpdateInProgress == annotations.AnnoTrue {
 		na.drainAndTerminate()
+
+		//sleep and hope fro the best
+		log.Println("[INFO] Falling asleep, bye..")
+		for {
+			time.Sleep(60 * time.Second)
+			log.Println("[INFO] sleeping...")
+		}
 	} else {
 		log.Println("[ERROR] Exited main loop with unexpected status")
 		os.Exit(1)
 	}
 }
 
+// write status to node annotations
 func (na *NodeAgent) updateStatus() {
 	anno := map[string]string{
 		annotations.UpdateNeeded:     na.s.UpdateNeeded,
@@ -149,6 +161,7 @@ func (na *NodeAgent) updateStatus() {
 	}, wait.NeverStop)
 }
 
+// Get list of pods that run on the node and are not owned by a DaemonSet
 func (na *NodeAgent) getPodsForTermination() ([]v1.Pod, error) {
 
 	pods := []v1.Pod{}
@@ -179,9 +192,11 @@ func (na *NodeAgent) getPodsForTermination() ([]v1.Pod, error) {
 	return pods, nil
 }
 
+// drain the node by evicting and then deleting what failed to evict
 func (na *NodeAgent) drainNode() error {
 
 	// Mark not Unschedulable
+	log.Println("[INFO] Marking node unschedulable")
 	if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
 		return err
 	}
@@ -218,6 +233,7 @@ func (na *NodeAgent) drainNode() error {
 	return nil
 }
 
+// deletes a pod
 func (na *NodeAgent) deletePod(pod v1.Pod) error {
 	if err := na.kc.CoreV1().Pods(pod.Namespace).Delete(pod.Name, &v1meta.DeleteOptions{}); err != nil {
 		return err
@@ -225,6 +241,7 @@ func (na *NodeAgent) deletePod(pod v1.Pod) error {
 	return nil
 }
 
+// evicts pod from the node
 func (na *NodeAgent) evictPod(pod v1.Pod) error {
 
 	eviction := &policyv1beta1.Eviction{
@@ -240,13 +257,13 @@ func (na *NodeAgent) evictPod(pod v1.Pod) error {
 	return nil
 }
 
-// waitForPodTermination waits for a pod to be deleted
+// waits for a pod to be deleted for podReapTimeOut
 func (na *NodeAgent) waitForPodTermination(pod v1.Pod, podReapTimeOut time.Duration) error {
 
 	return wait.PollImmediate(defaultPollInterval, podReapTimeOut, func() (bool, error) {
 		p, err := na.kc.CoreV1().Pods(pod.Namespace).Get(pod.Name, v1meta.GetOptions{})
 		if errors.IsNotFound(err) || (p != nil && p.ObjectMeta.UID != pod.ObjectMeta.UID) {
-			log.Println("Terminated pod %q", pod.Name)
+			log.Println("[INFO] Terminated pod %q", pod.Name)
 			return true, nil
 		}
 
@@ -260,6 +277,7 @@ func (na *NodeAgent) waitForPodTermination(pod v1.Pod, podReapTimeOut time.Durat
 	})
 }
 
+// Gets a pod list and waits for them a certain amount of time (timeout) to terminate
 func (na *NodeAgent) syncPodsTermination(pods []v1.Pod, timeout time.Duration) {
 
 	wg := sync.WaitGroup{}
@@ -276,13 +294,36 @@ func (na *NodeAgent) syncPodsTermination(pods []v1.Pod, timeout time.Duration) {
 	wg.Wait()
 }
 
+// Call node termination or throw error
 func (na *NodeAgent) terminateNode() error {
-	if err := na.cc.TerminateNode; err != nil {
+	if err := na.cc.TerminateNode(); err != nil {
 		return err
 	}
 	return nil
 }
 
+// Drain and terminate or loop forever
 func (na *NodeAgent) drainAndTerminate() {
 
+	// Drain
+	for {
+		if err := na.drainNode(); err != nil {
+			log.Println("[ERROR] Error while draining node %v, retrying in 10 seconds..", err)
+			time.Sleep(10 * time.Second)
+		} else {
+			log.Println("[INFO] Node drained")
+			break
+		}
+	}
+
+	// Terminate
+	for {
+		if err := na.terminateNode(); err != nil {
+			log.Println("[ERROR] Error while terminating node %v, retrying in 10 seconds..", err)
+			time.Sleep(10 * time.Second)
+		} else {
+			log.Println("[INFO] Issued Node termination")
+			break
+		}
+	}
 }
