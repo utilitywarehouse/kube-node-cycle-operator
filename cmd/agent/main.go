@@ -29,13 +29,24 @@ func main() {
 		usage()
 	}
 	project := *flagProject
+	if *flagRegion == "" {
+		usage()
+	}
+	region := *flagRegion
 
 	// Data from instance metadata
-	nodeName := meta.InstanceName()
-	hostName := meta.InstanceHostname()
-	zone := meta.InstanceZone()
-
-	region := *flagRegion
+	nodeName, err := meta.InstanceName()
+	if err != nil {
+		log.Fatal(err)
+	}
+	hostName, err := meta.InstanceHostname()
+	if err != nil {
+		log.Fatal(err)
+	}
+	zone, err := meta.InstanceZone()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// gcp client
 	gc, err := gclient.NewNodeClient(project, nodeName, region, zone)

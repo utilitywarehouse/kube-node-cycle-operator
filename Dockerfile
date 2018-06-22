@@ -22,6 +22,4 @@ RUN \
  CGO_ENABLED=0 go build -ldflags '-s -extldflags "-static"' -o /usr/bin/operator .
 
 # Clean
-RUN apk del curl go musl-dev && rm -r /go
-
-ENTRYPOINT ["$@"] 
+RUN apk del go musl-dev && rm -r /go
