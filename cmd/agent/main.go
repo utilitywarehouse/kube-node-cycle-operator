@@ -6,13 +6,14 @@ import (
 	"os"
 
 	gclient "github.com/utilitywarehouse/kube-node-cycle-operator/cloud/gcp/client"
-	//"github.com/utilitywarehouse/kube-node-cycle-operator/cloud/gcp/meta"
+	"github.com/utilitywarehouse/kube-node-cycle-operator/cloud/gcp/meta"
 	"github.com/utilitywarehouse/kube-node-cycle-operator/pkg/agent"
 )
 
 var (
 	// flags
 	flagProject    = flag.String("project", "", "(Required) GCP Project to use")
+	flagRegion     = flag.String("region", "", "(Required) Region where the node lives")
 	flagKubeConfig = flag.String("conf_file", "", "(Optional) Path of the kube config file to use. Defaults to incluster config for pods")
 )
 
@@ -30,15 +31,11 @@ func main() {
 	project := *flagProject
 
 	// Data from instance metadata
-	//nodeName := meta.InstanceName()
-	nodeName := "worker-k8s-75sg"
-	//hostName := meta.InstanceHostname()
-	hostName := "worker-k8s-75sg.c.uw-dev.internal"
-	//zone := meta.InstanceZone()
-	zone := "europe-west2-a"
+	nodeName := meta.InstanceName()
+	hostName := meta.InstanceHostname()
+	zone := meta.InstanceZone()
 
-	// TODO: Fix
-	region := "europe-west2"
+	region := *flagRegion
 
 	// gcp client
 	gc, err := gclient.NewNodeClient(project, nodeName, region, zone)

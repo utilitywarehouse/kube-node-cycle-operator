@@ -9,4 +9,5 @@ const (
 	LastCheckedTime  = "node-cycle-agent/last-checked-time"
 
 	CanStartTermination = "node-cycle-operator/can-start-termination"
+	ForceTermination    = "node-cycle-operator/force-termination"
 )

@@ -3,10 +3,11 @@ package meta
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 )
 
-func bodyToString(body io.Reader) {
+func bodyToString(body io.Reader) string {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(body)
 	return buf.String()

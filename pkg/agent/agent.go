@@ -107,16 +107,20 @@ func (na *NodeAgent) Run() {
 			continue
 		}
 
+		// Force Termination
+		if val, ok := n.Annotations[annotations.ForceTermination]; ok {
+			if val == annotations.AnnoTrue {
+				log.Println("[INFO] Forcing Termination")
+				na.s.UpdateInProgress = annotations.AnnoTrue
+				na.updateStatus()
+				break
+			}
+		}
 		// In case of update needed
 		if needsUpdate && na.s.UpdateNeeded == annotations.AnnoTrue {
 
 			// Poll for permission to start
 			if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
-				//TBD: testing code that is not reachable without operator
-				na.s.UpdateInProgress = annotations.AnnoTrue
-				na.updateStatus()
-				break
-
 				// Ignore and continue to poll on the next iteration
 				continue
 			}
