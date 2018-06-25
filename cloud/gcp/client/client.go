@@ -133,18 +133,12 @@ func (gc *GCPClient) NeedsUpdate(nodeName, region, zone string) (bool, error) {
 		return false, err
 	}
 
-	if groupManager.InstanceTemplate == instanceTemplate {
+	if formatLinkString(groupManager.InstanceTemplate) == formatLinkString(instanceTemplate) {
 		return false, nil
 	} else {
 		return true, nil
 	}
 
-	//available, err := gc.IsTemplateAvailable(instanceTemplate)
-	//if err != nil {
-	//	return false, err
-	//}
-
-	//return !available, nil
 }
 
 // Terminate instance won't be enough
