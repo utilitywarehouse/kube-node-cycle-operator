@@ -1,6 +1,7 @@
 package client
 
 import (
+	"log"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -136,6 +137,7 @@ func (gc *GCPClient) NeedsUpdate(nodeName, region, zone string) (bool, error) {
 	if formatLinkString(groupManager.InstanceTemplate) == formatLinkString(instanceTemplate) {
 		return false, nil
 	} else {
+		log.Println("Update needed for template difference", formatLinkString(groupManager.InstanceTemplate), formatLinkString(instanceTemplate))
 		return true, nil
 	}
 
