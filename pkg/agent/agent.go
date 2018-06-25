@@ -254,7 +254,9 @@ func (na *NodeAgent) evictPod(pod v1.Pod) error {
 		DeleteOptions: &v1meta.DeleteOptions{},
 	}
 
-	na.kc.PolicyV1beta1().Evictions(eviction.Namespace).Evict(eviction)
+	if err := na.kc.PolicyV1beta1().Evictions(eviction.Namespace).Evict(eviction); err != nil {
+		return err
+	}
 	return nil
 }
 
