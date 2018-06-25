@@ -79,17 +79,14 @@ func New(node, kubeConfig string, nodeClientInterface models.NodeClientInterface
 
 func (na *NodeAgent) Run() {
 
+	// Initialise Annotations
+	log.Println("[INFO] Annotations Init")
+	na.updateStatus()
+
 	for t := time.Tick(30 * time.Second); ; <-t {
 		n, err := na.nc.Get(na.node, v1meta.GetOptions{})
 		if err != nil {
 			log.Println("[INFO] failed to get self node (%q): %v", na.node, err)
-			continue
-		}
-
-		if _, ok := n.Annotations[annotations.UpdateNeeded]; !ok {
-			// First Run
-			log.Println("[INFO] First Run")
-			na.updateStatus()
 			continue
 		}
 
