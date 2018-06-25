@@ -174,11 +174,13 @@ func (op *Operator) Run() {
 		allNodes, err := op.getNodes()
 		if err != nil {
 			log.Println("[ERROR] error getting nodes %v", err)
+			continue
 		}
 
 		nodes, err := op.getReadyNodes()
 		if err != nil {
 			log.Println("[ERROR] error getting nodes %v", err)
+			continue
 		}
 
 		// Check for Not Ready Nodes
