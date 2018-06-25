@@ -14,7 +14,7 @@ func bodyToString(body io.Reader) string {
 }
 
 func getMetaInstanceItem(item string) (string, error) {
-	req, err := http.NewRequest("GET", fmt.Sprint("http://metadata.google.internal/computeMetadata/v1/instance/%s", item), nil)
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://metadata.google.internal/computeMetadata/v1/instance/%s", item), nil)
 	if err != nil {
 		return "", err
 	}
