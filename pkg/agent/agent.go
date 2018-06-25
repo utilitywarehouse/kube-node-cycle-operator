@@ -82,26 +82,26 @@ func (na *NodeAgent) Run() {
 	for t := time.Tick(30 * time.Second); ; <-t {
 		n, err := na.nc.Get(na.node, v1meta.GetOptions{})
 		if err != nil {
-			log.Println("failed to get self node (%q): %v", na.node, err)
+			log.Println("[INFO] failed to get self node (%q): %v", na.node, err)
 			continue
 		}
 
 		if _, ok := n.Annotations[annotations.UpdateNeeded]; !ok {
 			// First Run
-			log.Println("First Run")
+			log.Println("[INFO] First Run")
 			na.updateStatus()
 			continue
 		}
 
 		needsUpdate, err := na.cc.NeedsUpdate()
 		if err != nil {
-			log.Println(err)
+			log.Println("[ERROR] ", err)
 			continue
 		}
 
 		// Update Needed discovery
 		if needsUpdate && na.s.UpdateNeeded == annotations.AnnoFalse {
-			log.Println("Update Needed Detected")
+			log.Println("[INFO] Update Needed Detected")
 			na.s.UpdateNeeded = annotations.AnnoTrue
 			na.updateStatus()
 			continue
@@ -137,7 +137,7 @@ func (na *NodeAgent) Run() {
 	if na.s.UpdateNeeded == annotations.AnnoTrue && na.s.UpdateInProgress == annotations.AnnoTrue {
 		na.drainAndTerminate()
 
-		//sleep and hope fro the best
+		//sleep and hope for the best
 		log.Println("[INFO] Falling asleep, bye..")
 		for {
 			time.Sleep(60 * time.Second)
@@ -184,7 +184,7 @@ func (na *NodeAgent) getPodsForTermination() ([]v1.Pod, error) {
 		for _, ownerRef := range pod.OwnerReferences {
 			// If daemonset reference is present just ignore without testing that the daemonset actually exists
 			if ownerRef.Kind == "DaemonSet" {
-				log.Println("[Info] excluding %s as part of a daemonset", pod.Name)
+				log.Println("[INFO] excluding %s as part of a daemonset", pod.Name)
 				exclude = true
 				break
 			}
@@ -274,7 +274,7 @@ func (na *NodeAgent) waitForPodTermination(pod v1.Pod, podReapTimeOut time.Durat
 		// most errors will be transient. log the error and continue
 		// polling
 		if err != nil {
-			log.Println("Failed to get pod %q: %v", pod.Name, err)
+			log.Println("[ERROR] Failed to get pod %q: %v", pod.Name, err)
 		}
 
 		return false, nil

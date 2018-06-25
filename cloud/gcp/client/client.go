@@ -58,6 +58,7 @@ func NewGCPClient(project string) (*GCPClient, error) {
 
 func (gc *GCPClient) GetInstanceCreator(instance, zone string) (string, error) {
 	// Get instance object from the api
+	zone = formatLinkString(zone)
 	resp, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
 	if err != nil {
 		return "", err
@@ -80,6 +81,7 @@ func (gc *GCPClient) GetInstanceCreator(instance, zone string) (string, error) {
 
 func (gc *GCPClient) GetInstanceTemplateName(instance, zone string) (string, error) {
 	// Get instance object from the api
+	zone = formatLinkString(zone)
 	resp, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
 	if err != nil {
 		return "", err
@@ -149,11 +151,7 @@ func (gc *GCPClient) NeedsUpdate(nodeName, region, zone string) (bool, error) {
 // Instance needs to be recreated from instance group in order to get the new template
 // $ gcloud compute instance-groups managed recreate-instances NAME --instances=INSTANCE
 func (gc *GCPClient) TerminateInstance(instance, region, zone string) error {
-	//_, err := gc.ComputeService.Instances.Delete(gc.Project, zone, instance).Context(gc.Ctx).Do()
-	//if err != nil {
-	//	return err
-	//}
-	//return nil
+	zone = formatLinkString(zone)
 	inst, err := gc.ComputeService.Instances.Get(gc.Project, zone, instance).Context(gc.Ctx).Do()
 	if err != nil {
 		return err
