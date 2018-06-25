@@ -170,6 +170,11 @@ func (op *Operator) giveNodeUpdatePermission(nodeName string) {
 
 func (op *Operator) Run() {
 	for t := time.Tick(30 * time.Second); ; <-t {
+		if op.getNodes() > op.getReadyNodes() {
+			log.Println("[INFO] Not Ready nodes found, waiting..")
+			continue
+		}
+
 		nodes, err := op.getReadyNodes()
 		if err != nil {
 			log.Println("[ERROR] error getting nodes %v", err)
