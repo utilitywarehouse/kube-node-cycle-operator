@@ -2,8 +2,11 @@ package operator
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
+	"strconv"
 	"time"
 
 	"k8s.io/api/core/v1"
@@ -16,16 +19,21 @@ import (
 	"github.com/utilitywarehouse/kube-node-cycle-operator/pkg/annotations"
 )
 
-const defaultPollInterval = 10 * time.Second
+const (
+	defaultPollInterval = 10 * time.Second
+	configMapName       = "kube-node-cycle-operator-config"
+)
 
 type State struct {
-	NodeCount int `json:nodecount`
+	NodeCount       int
+	ForceUpdateDate string
 }
 
 type Operator struct {
 	kc        kubernetes.Interface
 	nc        v1core.NodeInterface
-	statePath string
+	namespace string
+	state     State
 }
 
 type OperatorInterface interface {
@@ -40,7 +48,7 @@ type OperatorInterface interface {
 	Run()
 }
 
-func New(kubeConfig, statePath string) (*Operator, error) {
+func New(kubeConfig string) (*Operator, error) {
 	// kube client
 	kubeClient, err := k8sutil.GetClient(kubeConfig)
 	if err != nil {
@@ -50,12 +58,77 @@ func New(kubeConfig, statePath string) (*Operator, error) {
 	// node interface
 	kubeNodeInterface := kubeClient.CoreV1().Nodes()
 
+	// Get namespace for configMap
+	namespace := os.Getenv("POD_NAMESPACE")
+	if namespace == "" {
+		return nil, fmt.Errorf("unable to get operator namespace: please ensure POD_NAMESPACE environment variable is set")
+	}
+
+	state := &State{}
+
 	operator := &Operator{
 		kc:        kubeClient,
 		nc:        kubeNodeInterface,
-		statePath: statePath,
+		namespace: namespace,
+		state:     state,
 	}
+	operator.configInit()
 	return operator, nil
+}
+
+func (op *Operator) configInit() {
+
+	// Check for configMap
+	log.Println("[INFO] Initializing config")
+	configMaps, err := op.kc.CoreV1().ConfigMaps(namespace).List(metav1.ListOptions{})
+	if err != nil {
+		log.Fatal("Failed to list configMaps", err)
+	}
+	for _, cm := range configMaps.Items {
+		if cm.GetName() == configMapName {
+			log.Println("[INFO] configMap already present")
+			return
+		}
+	}
+
+	log.Println("[INFO] ConfigMap not found, creating new..")
+	cm := &v1core.ConfigMap{}
+	cm.SetName(configMapName)
+	cm.Data["NodeCount"] = ""
+	cm.Data["ForceUpdateDate"] = ""
+
+	_, err := op.kc.CoreV1().ConfigMaps(namespace).Create(&cm)
+	if err != nil {
+		return err
+	}
+}
+
+func (op *Operator) getNodeCountFromConf() (int, error) {
+	cm, err := op.kc.CoreV1().ConfigMaps(namespace).Get(configMapName, v1meta.GetOptions{})
+	if err != nil {
+		return 0, err
+	}
+	if n, ok := cm.Data["NodeCount"]; !ok {
+		return 0, fmt.Errorf("Cannot find NodeCount in config")
+	}
+
+	return strconv.Atoi(n)
+}
+
+func (op *Operator) updateConf() error {
+	cm, err := op.kc.CoreV1().ConfigMaps(namespace).Get(configMapName, v1meta.GetOptions{})
+	if err != nil {
+		return err
+	}
+
+	cm.Data["NodeCount"] = strconv.Itoa(vop.state.NodeCount)
+	cm.Data["ForceUpdateDate"] = op.state.ForceUpdateDate
+
+	_, err := op.kc.CoreV1().ConfigMaps(namespace).Update(&cm)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (op *Operator) getNodeCountFromJson() (int, error) {
@@ -84,6 +157,10 @@ func (op *Operator) setNodeCountToJson(count int) error {
 	if err = ioutil.WriteFile(op.statePath, raw, 0644); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (op *Operator) setForceUpdateDate(forceUpdateDate time.Time) error {
 	return nil
 }
 

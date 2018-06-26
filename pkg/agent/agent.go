@@ -92,7 +92,7 @@ func (na *NodeAgent) Run() {
 
 		needsUpdate, err := na.cc.NeedsUpdate()
 		if err != nil {
-			log.Println("[ERROR] ", err)
+			log.Println("[ERROR] cannot determine if update is needed: ", err)
 			continue
 		}
 
