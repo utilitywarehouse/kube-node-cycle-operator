@@ -1,6 +1,6 @@
 # Kube Node Cycle Operator
 
-Highly inspired by ([container-linux-update-operator]https://github.com/coreos/container-linux-update-operator/) and borrows `k8sutil` from there.
+Highly inspired by [container-linux-update-operator](https://github.com/coreos/container-linux-update-operator/) and borrows `k8sutil` from there.
 
 Includes 2 applications (`agent` and `operator`) to automate the graceful termination of kubernetes cluster nodes in case their configuration is updated.
 
@@ -40,7 +40,7 @@ Usage of agent:
         comma-separated list of pattern=N settings for file-filtered logging
 ```
 
-Example ([manifest]https://github.com/utilitywarehouse/kube-node-cycle-operator/deploy/agent.yaml)
+Example [manifest](https://github.com/utilitywarehouse/kube-node-cycle-operator/blob/master/deploy/agent.yaml)
  
 ## Operator
 
@@ -74,6 +74,6 @@ Usage of operator:
         comma-separated list of pattern=N settings for file-filtered logging
 ```
 
-Example ([manifest]https://github.com/utilitywarehouse/kube-node-cycle-operator/deploy/operator.yaml)
+Example [manifest](https://github.com/utilitywarehouse/kube-node-cycle-operator/blob/master/deploy/agent.yaml)
 
 Even though this works to successfully rotate nodes on a manual cluster on `gcp` it is still work in progress and might require heavy changes.
