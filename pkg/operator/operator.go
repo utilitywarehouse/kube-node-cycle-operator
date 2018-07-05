@@ -2,10 +2,12 @@ package operator
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"time"
 
+	"github.com/pkg/errors"
 	"k8s.io/api/core/v1"
 	v1meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -34,6 +36,7 @@ type OperatorInterface interface {
 	getNodes() ([]v1.Node, error)
 	getReadyNodes() ([]v1.Node, error)
 	updateNeeded(nodes []v1.Node) (bool, []v1.Node)
+	nextToUpdate(updateNodes []v1.Node) (v1.Node, error)
 	updateInProgress(nodes []v1.Node) bool
 	updatePermissionGiven(nodes []v1.Node) bool
 	giveNodeUpdatePermission(nodeName string)
@@ -118,7 +121,7 @@ func (op *Operator) getReadyNodes() ([]v1.Node, error) {
 func (op *Operator) updateNeeded(nodes []v1.Node) (updateNeeded bool, updateNodes []v1.Node) {
 	for _, n := range nodes {
 		if _, ok := n.Annotations[annotations.UpdateNeeded]; !ok {
-			log.Println("[INFO] node %s has no annotation %s", n.Name, annotations.UpdateNeeded)
+			log.Println(fmt.Sprintf("[INFO] node %s has no annotation %s", n.Name, annotations.UpdateNeeded))
 		} else {
 			if n.Annotations[annotations.UpdateNeeded] == annotations.AnnoTrue {
 				updateNeeded = true
@@ -129,10 +132,32 @@ func (op *Operator) updateNeeded(nodes []v1.Node) (updateNeeded bool, updateNode
 	return updateNeeded, updateNodes
 }
 
+// nextToUpdate: gets a list of nodes and searches for `role=master` label. It returns the first `master`
+// it may find or else the first node in the list
+// errors on empty input list.
+func (op *Operator) nextToUpdate(updateNodes []v1.Node) (v1.Node, error) {
+
+	if len(updateNodes) <= 0 {
+		return v1.Node{}, errors.New("Empty list passed to nextToUpdate function")
+	}
+	for _, n := range updateNodes {
+		if _, ok := n.Labels["role"]; !ok {
+			log.Println("[WARN] node without role label:", n.Name)
+		} else {
+			if n.Labels["role"] == "master" {
+				log.Println("[INFO] found master node that needs updating: ", n.Name)
+				return n, nil
+			}
+		}
+	}
+	log.Println("[INFO] next node to update:", updateNodes[0].Name)
+	return updateNodes[0], nil
+}
+
 func (op *Operator) updateInProgress(nodes []v1.Node) bool {
 	for _, n := range nodes {
 		if _, ok := n.Annotations[annotations.UpdateInProgress]; !ok {
-			log.Println("[INFO] node %s has no annotation %s", n.Name, annotations.UpdateInProgress)
+			log.Println(fmt.Sprintf("[INFO] node %s has no annotation %s", n.Name, annotations.UpdateInProgress))
 		} else {
 			if n.Annotations[annotations.UpdateInProgress] == annotations.AnnoTrue {
 				return true
@@ -145,7 +170,7 @@ func (op *Operator) updateInProgress(nodes []v1.Node) bool {
 func (op *Operator) updatePermissionGiven(nodes []v1.Node) bool {
 	for _, n := range nodes {
 		if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
-			log.Println("[INFO] node %s has no annotation %s", n.Name, annotations.CanStartTermination)
+			log.Println(fmt.Sprintf("[INFO] node %s has no annotation %s", n.Name, annotations.CanStartTermination))
 		} else {
 			if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
 				return true
@@ -173,13 +198,13 @@ func (op *Operator) Run() {
 
 		allNodes, err := op.getNodes()
 		if err != nil {
-			log.Println("[ERROR] error getting nodes %v", err)
+			log.Println("[ERROR] error getting nodes:", err)
 			continue
 		}
 
 		nodes, err := op.getReadyNodes()
 		if err != nil {
-			log.Println("[ERROR] error getting nodes %v", err)
+			log.Println("[ERROR] error getting nodes:", err)
 			continue
 		}
 
@@ -192,7 +217,7 @@ func (op *Operator) Run() {
 		// If no update is needed just update the node count with the current number and continue
 		updateNeeded, updateNodes := op.updateNeeded(nodes)
 		if !updateNeeded {
-			log.Println("[INFO] no updated needed, updating node count to: %d", len(nodes))
+			log.Println("[INFO] no updated needed, updating node count to:", len(nodes))
 			op.setNodeCountToJson(len(nodes))
 			continue
 		}
@@ -211,7 +236,11 @@ func (op *Operator) Run() {
 
 		// If we have enough nodes give permission to start updating
 		if len(nodes) >= nodeCount {
-			op.giveNodeUpdatePermission(updateNodes[0].Name)
+			n, err := op.nextToUpdate(updateNodes)
+			if err != nil {
+				log.Println("[ERROR] error while searching for next node to update:", err)
+			}
+			op.giveNodeUpdatePermission(n.Name)
 		}
 	}
 }
