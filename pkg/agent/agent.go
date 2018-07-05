@@ -107,7 +107,7 @@ func (na *NodeAgent) Run() {
 		// Force Termination
 		if val, ok := n.Annotations[annotations.ForceTermination]; ok {
 			if val == annotations.AnnoTrue {
-				log.Println("[INFO] Forcing Termination")
+				log.Println("[INFO] Forcing Termination Annotation Found, forcing termination..")
 				na.s.UpdateInProgress = annotations.AnnoTrue
 				na.updateStatus()
 				break
