@@ -24,9 +24,10 @@ import (
 const defaultPollInterval = 10 * time.Second
 
 type Status struct {
-	UpdateNeeded     string
-	UpdateInProgress string
-	LastCheckedTime  time.Time
+	UpdateNeeded      string
+	UpdateInProgress  string
+	ForceUpdateNeeded string
+	LastCheckedTime   time.Time
 }
 
 type NodeAgent struct {
@@ -62,9 +63,10 @@ func New(node, kubeConfig string, nodeClientInterface models.NodeClientInterface
 
 	// Initial Status
 	st := &Status{
-		UpdateNeeded:     annotations.AnnoFalse,
-		UpdateInProgress: annotations.AnnoFalse,
-		LastCheckedTime:  time.Now(),
+		UpdateNeeded:      annotations.AnnoFalse,
+		UpdateInProgress:  annotations.AnnoFalse,
+		ForceUpdateNeeded: annotations.AnnoFalse,
+		LastCheckedTime:   time.Now(),
 	}
 
 	agent := &NodeAgent{
@@ -109,6 +111,7 @@ func (na *NodeAgent) Run() {
 			if val == annotations.AnnoTrue {
 				log.Println("[INFO] Forcing Termination Annotation Found, forcing termination..")
 				na.s.UpdateInProgress = annotations.AnnoTrue
+				na.s.ForceUpdateNeeded = annotations.AnnoTrue
 				na.updateStatus()
 				break
 			}
@@ -131,7 +134,7 @@ func (na *NodeAgent) Run() {
 
 		}
 	}
-	if na.s.UpdateNeeded == annotations.AnnoTrue && na.s.UpdateInProgress == annotations.AnnoTrue {
+	if (na.s.UpdateNeeded == annotations.AnnoTrue || na.s.ForceUpdateNeeded == annotations.AnnoTrue) && na.s.UpdateInProgress == annotations.AnnoTrue {
 		na.drainAndTerminate()
 
 		//sleep and hope for the best
