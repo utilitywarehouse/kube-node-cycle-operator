@@ -40,7 +40,9 @@ type OperatorInterface interface {
 	readStateFromJson() (State, error)
 	flushStateToJson() error
 	getNodeCount() (int, error)
+	getLastAcceptedCreationTime() (time.Time, error)
 	setNodeCount(count int) error
+	SetLastAcceptedCreationTime(t time.Time) error
 	getNodes() ([]v1.Node, error)
 	getReadyNodes() ([]v1.Node, error)
 	updateNeeded(nodes []v1.Node) (bool, []v1.Node)
@@ -49,6 +51,7 @@ type OperatorInterface interface {
 	updateInProgress(nodes []v1.Node) bool
 	updatePermissionGiven(nodes []v1.Node) bool
 	giveNodeUpdatePermission(nodeName string)
+	forceNodeUpdate(nodeName string)
 	Run()
 }
 
@@ -135,7 +138,9 @@ func (op *Operator) setNodeCount(count int) error {
 	return nil
 }
 
-func (op *Operator) setLastAcceptedCreationTime(t time.Time) error {
+// SetLastAcceptedCreationTime: used to inject lastAcceptedCreationTime into state
+// from outside the operator
+func (op *Operator) SetLastAcceptedCreationTime(t time.Time) error {
 
 	op.state.LastAcceptedCreationTime = t
 
@@ -265,6 +270,20 @@ func (op *Operator) giveNodeUpdatePermission(nodeName string) {
 	}, wait.NeverStop)
 }
 
+func (op *Operator) forceNodeUpdate(nodeName string) {
+	anno := map[string]string{
+		annotations.CanStartTermination: annotations.AnnoTrue,
+		annotations.ForceTermination:    annotations.AnnoTrue,
+	}
+
+	wait.PollUntil(defaultPollInterval, func() (bool, error) {
+		if err := k8sutil.SetNodeAnnotations(op.nc, nodeName, anno); err != nil {
+			return false, nil
+		}
+		return true, nil
+	}, wait.NeverStop)
+}
+
 func (op *Operator) Run() {
 	for t := time.Tick(30 * time.Second); ; <-t {
 
@@ -310,11 +329,17 @@ func (op *Operator) Run() {
 			log.Fatal("Failed to get node count, exiting")
 		}
 
-		// Force Update nodes take precedence except for masters
-		updateNodes = append(forceUpdateNodes, updateNodes...)
-
+		// Force Update nodes take precedence
 		// If we have enough nodes give permission to start updating
-		if len(nodes) >= nodeCount {
+		if len(nodes) >= nodeCount && forceUpdateNeeded {
+			n, err := op.nextToUpdate(forceUpdateNodes)
+			if err != nil {
+				log.Println("[ERROR] error while searching for next node to update:", err)
+			}
+			op.forceNodeUpdate(n.Name)
+		}
+
+		if len(nodes) >= nodeCount && !forceUpdateNeeded {
 			n, err := op.nextToUpdate(updateNodes)
 			if err != nil {
 				log.Println("[ERROR] error while searching for next node to update:", err)
