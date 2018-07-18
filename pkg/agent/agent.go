@@ -39,6 +39,7 @@ type NodeAgent struct {
 
 type NodeAgentInterface interface {
 	Run()
+	cleanUpOnStartup()
 	updateStatus()
 	drainNode() error
 	getPodsForTermination() ([]v1.Pod, error)
@@ -82,6 +83,7 @@ func (na *NodeAgent) Run() {
 	// Initialise Annotations
 	log.Println("[INFO] Annotations Init")
 	na.updateStatus()
+	na.cleanUpOnStartup()
 
 	for t := time.Tick(30 * time.Second); ; <-t {
 		n, err := na.nc.Get(na.node, v1meta.GetOptions{})
@@ -144,6 +146,37 @@ func (na *NodeAgent) Run() {
 		log.Println("[ERROR] Exited main loop with unexpected status")
 		os.Exit(1)
 	}
+}
+
+func (na *NodeAgent) cleanUpOnStartup() {
+	n, err := na.nc.Get(na.node, v1meta.GetOptions{})
+	if err != nil {
+		log.Fatal(fmt.Sprintf("failed to get self node during startup (%q): %v", na.node, err))
+	}
+
+	if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
+		return
+	}
+
+	if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
+
+		log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
+		anno := map[string]string{
+			annotations.CanStartTermination: annotations.AnnoTrue,
+		}
+		wait.PollUntil(defaultPollInterval, func() (bool, error) {
+			if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
+				return false, nil
+			}
+			return true, nil
+		}, wait.NeverStop)
+
+		log.Println("[INFO] Setting Node Schedulable")
+		if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+			log.Fatal(err)
+		}
+	}
+
 }
 
 // write status to node annotations
