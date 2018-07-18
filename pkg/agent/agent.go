@@ -157,29 +157,47 @@ func (na *NodeAgent) cleanUpOnStartup() {
 		log.Fatal(fmt.Sprintf("failed to get self node during startup (%q): %v", na.node, err))
 	}
 
-	if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
-		return
-	}
+	if _, ok := n.Annotations[annotations.CanStartTermination]; ok {
+		if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
 
-	if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
-
-		log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
-		anno := map[string]string{
-			annotations.CanStartTermination: annotations.AnnoTrue,
-		}
-		wait.PollUntil(defaultPollInterval, func() (bool, error) {
-			if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
-				return false, nil
+			log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
+			anno := map[string]string{
+				annotations.CanStartTermination: annotations.AnnoFalse,
 			}
-			return true, nil
-		}, wait.NeverStop)
+			wait.PollUntil(defaultPollInterval, func() (bool, error) {
+				if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
+					return false, nil
+				}
+				return true, nil
+			}, wait.NeverStop)
 
-		log.Println("[INFO] Setting Node Schedulable")
-		if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
-			log.Fatal(err)
+			log.Println("[INFO] Setting Node Schedulable")
+			if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 
+	if _, ok := n.Annotations[annotations.ForceTermination]; ok {
+		if n.Annotations[annotations.ForceTermination] == annotations.AnnoTrue {
+
+			log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.ForceTermination))
+			anno := map[string]string{
+				annotations.ForceTermination: annotations.AnnoFalse,
+			}
+			wait.PollUntil(defaultPollInterval, func() (bool, error) {
+				if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
+					return false, nil
+				}
+				return true, nil
+			}, wait.NeverStop)
+
+			log.Println("[INFO] Setting Node Schedulable")
+			if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 }
 
 // write status to node annotations
