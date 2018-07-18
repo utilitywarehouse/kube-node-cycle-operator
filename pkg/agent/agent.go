@@ -172,7 +172,7 @@ func (na *NodeAgent) cleanUpOnStartup() {
 			}, wait.NeverStop)
 
 			log.Println("[INFO] Setting Node Schedulable")
-			if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+			if err := k8sutil.Unschedulable(na.nc, na.node, false); err != nil {
 				log.Fatal(err)
 			}
 		}
@@ -193,7 +193,7 @@ func (na *NodeAgent) cleanUpOnStartup() {
 			}, wait.NeverStop)
 
 			log.Println("[INFO] Setting Node Schedulable")
-			if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+			if err := k8sutil.Unschedulable(na.nc, na.node, false); err != nil {
 				log.Fatal(err)
 			}
 		}
