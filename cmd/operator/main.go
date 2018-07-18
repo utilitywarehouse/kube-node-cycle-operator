@@ -2,8 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/utilitywarehouse/kube-node-cycle-operator/pkg/operator"
 )
@@ -18,6 +21,7 @@ func usage() {
 	flag.Usage()
 	os.Exit(2)
 }
+
 func main() {
 	// Flag Parsing
 	flag.Parse()
@@ -31,6 +35,30 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Listen for force update triggers
+	log.Println("[INFO] starting HTTP endpoints ...")
+	mux := http.NewServeMux()
+
+	// Add handler func
+	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t := time.Now()
+		err := op.SetLastAcceptedCreationTime(t)
+		if err != nil {
+			fmt.Fprintf(w, "Error while trying set new force update\n")
+			log.Println("[WARN] Error forcing update:", err)
+		}
+		fmt.Fprintf(w, "Forcing Update for nodes created before: %v\n", t)
+	})
+	mux.Handle("/forceUpdate", h)
+
+	go func() {
+		if err := http.ListenAndServe(":8080", mux); err != nil {
+			log.Fatal("could not start HTTP router: ", err)
+		}
+	}()
+
+	// Run
 	op.Run()
 
 }

@@ -24,9 +24,10 @@ import (
 const defaultPollInterval = 10 * time.Second
 
 type Status struct {
-	UpdateNeeded     string
-	UpdateInProgress string
-	LastCheckedTime  time.Time
+	UpdateNeeded      string
+	UpdateInProgress  string
+	ForceUpdateNeeded string
+	LastCheckedTime   time.Time
 }
 
 type NodeAgent struct {
@@ -63,9 +64,10 @@ func New(node, kubeConfig string, nodeClientInterface models.NodeClientInterface
 
 	// Initial Status
 	st := &Status{
-		UpdateNeeded:     annotations.AnnoFalse,
-		UpdateInProgress: annotations.AnnoFalse,
-		LastCheckedTime:  time.Now(),
+		UpdateNeeded:      annotations.AnnoFalse,
+		UpdateInProgress:  annotations.AnnoFalse,
+		ForceUpdateNeeded: annotations.AnnoFalse,
+		LastCheckedTime:   time.Now(),
 	}
 
 	agent := &NodeAgent{
@@ -109,8 +111,9 @@ func (na *NodeAgent) Run() {
 		// Force Termination
 		if val, ok := n.Annotations[annotations.ForceTermination]; ok {
 			if val == annotations.AnnoTrue {
-				log.Println("[INFO] Forcing Termination")
+				log.Println("[INFO] Forcing Termination Annotation Found, forcing termination..")
 				na.s.UpdateInProgress = annotations.AnnoTrue
+				na.s.ForceUpdateNeeded = annotations.AnnoTrue
 				na.updateStatus()
 				break
 			}
@@ -133,7 +136,7 @@ func (na *NodeAgent) Run() {
 
 		}
 	}
-	if na.s.UpdateNeeded == annotations.AnnoTrue && na.s.UpdateInProgress == annotations.AnnoTrue {
+	if (na.s.UpdateNeeded == annotations.AnnoTrue || na.s.ForceUpdateNeeded == annotations.AnnoTrue) && na.s.UpdateInProgress == annotations.AnnoTrue {
 		na.drainAndTerminate()
 
 		//sleep and hope for the best
@@ -154,29 +157,47 @@ func (na *NodeAgent) cleanUpOnStartup() {
 		log.Fatal(fmt.Sprintf("failed to get self node during startup (%q): %v", na.node, err))
 	}
 
-	if _, ok := n.Annotations[annotations.CanStartTermination]; !ok {
-		return
-	}
+	if _, ok := n.Annotations[annotations.CanStartTermination]; ok {
+		if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
 
-	if n.Annotations[annotations.CanStartTermination] == annotations.AnnoTrue {
-
-		log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
-		anno := map[string]string{
-			annotations.CanStartTermination: annotations.AnnoTrue,
-		}
-		wait.PollUntil(defaultPollInterval, func() (bool, error) {
-			if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
-				return false, nil
+			log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
+			anno := map[string]string{
+				annotations.CanStartTermination: annotations.AnnoFalse,
 			}
-			return true, nil
-		}, wait.NeverStop)
+			wait.PollUntil(defaultPollInterval, func() (bool, error) {
+				if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
+					return false, nil
+				}
+				return true, nil
+			}, wait.NeverStop)
 
-		log.Println("[INFO] Setting Node Schedulable")
-		if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
-			log.Fatal(err)
+			log.Println("[INFO] Setting Node Schedulable")
+			if err := k8sutil.Unschedulable(na.nc, na.node, false); err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 
+	if _, ok := n.Annotations[annotations.ForceTermination]; ok {
+		if n.Annotations[annotations.ForceTermination] == annotations.AnnoTrue {
+
+			log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.ForceTermination))
+			anno := map[string]string{
+				annotations.ForceTermination: annotations.AnnoFalse,
+			}
+			wait.PollUntil(defaultPollInterval, func() (bool, error) {
+				if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
+					return false, nil
+				}
+				return true, nil
+			}, wait.NeverStop)
+
+			log.Println("[INFO] Setting Node Schedulable")
+			if err := k8sutil.Unschedulable(na.nc, na.node, false); err != nil {
+				log.Fatal(err)
+			}
+		}
+	}
 }
 
 // write status to node annotations

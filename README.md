@@ -76,4 +76,11 @@ Usage of operator:
 
 Example [manifest](https://github.com/utilitywarehouse/kube-node-cycle-operator/blob/master/deploy/agent.yaml)
 
+### Forcing Updates
+
+Example:
+```
+kubectl --namespace=kube-system exec -ti kube-node-cycle-operator-69788cbf46-p78dj -- wget -O - http://localhost:8080/forceUpdate
+```
+
 Even though this works to successfully rotate nodes on a manual cluster on `gcp` it is still work in progress and might require heavy changes.

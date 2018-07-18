@@ -18,32 +18,44 @@ import (
 	"github.com/utilitywarehouse/kube-node-cycle-operator/pkg/annotations"
 )
 
-const defaultPollInterval = 10 * time.Second
+const (
+	defaultPollInterval = 10 * time.Second
+	// https://golang.org/src/time/format.go
+	TimestampFormat string = "Mon, 02 Jan 2006 15:04:05 -0700" //RFC1123Z
+)
 
 type State struct {
-	NodeCount int `json:nodecount`
+	NodeCount                int       `json:nodecount`
+	LastAcceptedCreationTime time.Time `json:lastAcceptedCreationTime`
 }
 
 type Operator struct {
 	kc        kubernetes.Interface
 	nc        v1core.NodeInterface
 	statePath string
+	state     *State
 }
 
 type OperatorInterface interface {
-	getNodeCountFromJson() (int, error)
-	setNodeCountToJson(count int) error
+	readStateFromJson() (*State, error)
+	flushStateToJson() error
+	getNodeCount() (int, error)
+	getLastAcceptedCreationTime() (time.Time, error)
+	setNodeCount(count int) error
+	SetLastAcceptedCreationTime(t time.Time) error
 	getNodes() ([]v1.Node, error)
 	getReadyNodes() ([]v1.Node, error)
 	updateNeeded(nodes []v1.Node) (bool, []v1.Node)
+	forceUpdateNeeded(nodes []v1.Node) (forceUpdateNeeded bool, forceUpdateNodes []v1.Node)
 	nextToUpdate(updateNodes []v1.Node) (v1.Node, error)
 	updateInProgress(nodes []v1.Node) bool
 	updatePermissionGiven(nodes []v1.Node) bool
 	giveNodeUpdatePermission(nodeName string)
+	forceNodeUpdate(nodeName string)
 	Run()
 }
 
-func New(kubeConfig, statePath string) (*Operator, error) {
+func New(kubeConfig, statePath string) (OperatorInterface, error) {
 	// kube client
 	kubeClient, err := k8sutil.GetClient(kubeConfig)
 	if err != nil {
@@ -57,34 +69,82 @@ func New(kubeConfig, statePath string) (*Operator, error) {
 		kc:        kubeClient,
 		nc:        kubeNodeInterface,
 		statePath: statePath,
+		state:     &State{},
+	}
+
+	log.Println("[INFO] Initialised new operator")
+	log.Println("[INFO] Looking for existing state..")
+	s, err := operator.readStateFromJson()
+	if err != nil {
+		log.Println("[INFO] Cannot get state, flushing the new empty one")
+		operator.flushStateToJson()
+	} else {
+		log.Println("[INFO] Previous state found")
+		operator.state = s
 	}
 	return operator, nil
 }
 
-func (op *Operator) getNodeCountFromJson() (int, error) {
+func (op *Operator) readStateFromJson() (*State, error) {
 	raw, err := ioutil.ReadFile(op.statePath)
 	if err != nil {
-		return 0, err
+		return &State{}, err
 	}
 
 	s := &State{}
 	if err := json.Unmarshal(raw, s); err != nil {
-		return 0, err
+		return &State{}, err
 	}
-	return s.NodeCount, nil
+	return s, nil
 }
 
-func (op *Operator) setNodeCountToJson(count int) error {
-	s := &State{
-		NodeCount: count,
-	}
-
-	raw, err := json.Marshal(s)
+func (op *Operator) flushStateToJson() error {
+	raw, err := json.Marshal(op.state)
 	if err != nil {
 		return err
 	}
 
 	if err = ioutil.WriteFile(op.statePath, raw, 0644); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (op *Operator) getNodeCount() (int, error) {
+
+	s, err := op.readStateFromJson()
+	if err != nil {
+		return 0, err
+	}
+	return s.NodeCount, nil
+}
+
+func (op *Operator) getLastAcceptedCreationTime() (time.Time, error) {
+
+	s, err := op.readStateFromJson()
+	if err != nil {
+		return time.Time{}, err
+	}
+	return s.LastAcceptedCreationTime, nil
+}
+
+func (op *Operator) setNodeCount(count int) error {
+
+	op.state.NodeCount = count
+
+	if err := op.flushStateToJson(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// SetLastAcceptedCreationTime: used to inject lastAcceptedCreationTime into state
+// from outside the operator
+func (op *Operator) SetLastAcceptedCreationTime(t time.Time) error {
+
+	op.state.LastAcceptedCreationTime = t
+
+	if err := op.flushStateToJson(); err != nil {
 		return err
 	}
 	return nil
@@ -130,6 +190,23 @@ func (op *Operator) updateNeeded(nodes []v1.Node) (updateNeeded bool, updateNode
 		}
 	}
 	return updateNeeded, updateNodes
+}
+
+func (op *Operator) forceUpdateNeeded(nodes []v1.Node) (forceUpdateNeeded bool, forceUpdateNodes []v1.Node) {
+
+	lastAccepted, err := op.getLastAcceptedCreationTime()
+	if err != nil {
+		log.Fatal("error getting Last Accepted Time")
+	}
+	// Make time comply with k8s apimachinery time
+	t := v1meta.NewTime(lastAccepted)
+	for _, n := range nodes {
+		if n.CreationTimestamp.Before(&t) {
+			forceUpdateNeeded = true
+			forceUpdateNodes = append(forceUpdateNodes, n)
+		}
+	}
+	return forceUpdateNeeded, forceUpdateNodes
 }
 
 // nextToUpdate: gets a list of nodes and searches for `role=master` label. It returns the first `master`
@@ -193,6 +270,20 @@ func (op *Operator) giveNodeUpdatePermission(nodeName string) {
 	}, wait.NeverStop)
 }
 
+func (op *Operator) forceNodeUpdate(nodeName string) {
+	anno := map[string]string{
+		annotations.CanStartTermination: annotations.AnnoTrue,
+		annotations.ForceTermination:    annotations.AnnoTrue,
+	}
+
+	wait.PollUntil(defaultPollInterval, func() (bool, error) {
+		if err := k8sutil.SetNodeAnnotations(op.nc, nodeName, anno); err != nil {
+			return false, nil
+		}
+		return true, nil
+	}, wait.NeverStop)
+}
+
 func (op *Operator) Run() {
 	for t := time.Tick(30 * time.Second); ; <-t {
 
@@ -214,11 +305,15 @@ func (op *Operator) Run() {
 			continue
 		}
 
-		// If no update is needed just update the node count with the current number and continue
+		// Get nodes that need updating
 		updateNeeded, updateNodes := op.updateNeeded(nodes)
-		if !updateNeeded {
+		// Get nodes tha we need to force Update
+		forceUpdateNeeded, forceUpdateNodes := op.forceUpdateNeeded(nodes)
+
+		// If no update is needed just update the node count with the current number and continue
+		if !updateNeeded && !forceUpdateNeeded {
 			log.Println("[INFO] no updated needed, updating node count to:", len(nodes))
-			op.setNodeCountToJson(len(nodes))
+			op.setNodeCount(len(nodes))
 			continue
 		}
 
@@ -229,13 +324,22 @@ func (op *Operator) Run() {
 			continue
 		}
 
-		nodeCount, err := op.getNodeCountFromJson()
+		nodeCount, err := op.getNodeCount()
 		if err != nil {
 			log.Fatal("Failed to get node count, exiting")
 		}
 
+		// Force Update nodes take precedence
 		// If we have enough nodes give permission to start updating
-		if len(nodes) >= nodeCount {
+		if len(nodes) >= nodeCount && forceUpdateNeeded {
+			n, err := op.nextToUpdate(forceUpdateNodes)
+			if err != nil {
+				log.Println("[ERROR] error while searching for next node to update:", err)
+			}
+			op.forceNodeUpdate(n.Name)
+		}
+
+		if len(nodes) >= nodeCount && !forceUpdateNeeded {
 			n, err := op.nextToUpdate(updateNodes)
 			if err != nil {
 				log.Println("[ERROR] error while searching for next node to update:", err)
