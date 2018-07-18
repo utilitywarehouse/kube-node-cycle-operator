@@ -37,7 +37,7 @@ type Operator struct {
 }
 
 type OperatorInterface interface {
-	readStateFromJson() (State, error)
+	readStateFromJson() (*State, error)
 	flushStateToJson() error
 	getNodeCount() (int, error)
 	getLastAcceptedCreationTime() (time.Time, error)
@@ -55,7 +55,7 @@ type OperatorInterface interface {
 	Run()
 }
 
-func New(kubeConfig, statePath string) (*Operator, error) {
+func New(kubeConfig, statePath string) (OperatorInterface, error) {
 	// kube client
 	kubeClient, err := k8sutil.GetClient(kubeConfig)
 	if err != nil {
