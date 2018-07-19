@@ -162,7 +162,7 @@ func (na *NodeAgent) cleanUpOnStartup() {
 
 		log.Println(fmt.Sprintf("[INFO] Cleaning annotation: %s", annotations.CanStartTermination))
 		anno := map[string]string{
-			annotations.CanStartTermination: annotations.AnnoTrue,
+			annotations.CanStartTermination: annotations.AnnoFalse,
 		}
 		wait.PollUntil(defaultPollInterval, func() (bool, error) {
 			if err := k8sutil.SetNodeAnnotations(na.nc, na.node, anno); err != nil {
@@ -172,7 +172,7 @@ func (na *NodeAgent) cleanUpOnStartup() {
 		}, wait.NeverStop)
 
 		log.Println("[INFO] Setting Node Schedulable")
-		if err := k8sutil.Unschedulable(na.nc, na.node, true); err != nil {
+		if err := k8sutil.Unschedulable(na.nc, na.node, false); err != nil {
 			log.Fatal(err)
 		}
 	}
