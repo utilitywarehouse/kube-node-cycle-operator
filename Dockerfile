@@ -2,8 +2,8 @@ FROM alpine:3.7
 
 ENV GOPATH=/go
 
-WORKDIR /go/src/app
-COPY . /go/src/app/
+WORKDIR /go/src/github.com/utilitywarehouse/kube-node-cycle-operator/
+COPY . /go/src/github.com/utilitywarehouse/kube-node-cycle-operator/
 
 RUN apk --no-cache add ca-certificates git go musl-dev && \
   go get ./... && \
